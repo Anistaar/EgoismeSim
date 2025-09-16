@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Simulation – Égoïsme & Vaches</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { margin:0; height:100%; background:#0e0f12; color:#e7e7e7; font-family: system-ui, sans-serif; }
+      #app { width:100vw; height:100vh; overflow:hidden; }
+      canvas#sim { width:100vw; height:100vh; display:block; background:#111; cursor: grab; }
+      canvas#sim.dragging { cursor: grabbing; }
+
+      #hud {
+        position: fixed; top: 12px; left: 12px;
+        background: rgba(0,0,0,0.6); padding: 8px 10px; border-radius: 8px;
+        font-size: 12px; line-height: 1.3; pointer-events: none;
+      }
+      #hud code { color: #9ae6b4; }
+
+      #controls {
+        position: fixed; top: 12px; right: 12px; left: auto;
+        background: rgba(0,0,0,0.6); padding: 8px 10px; border-radius: 8px;
+        font-size: 12px; display: flex; gap: 8px; align-items: center; z-index: 20;
+      }
+      #controls select, #controls button {
+        background:#15171c; color:#e7e7e7; border:1px solid #2a2e35; border-radius:6px; padding:4px 8px; font-size:12px;
+      }
+      #controls label { opacity:.85 }
+
+      /* === Sidebar Stats === */
+      #sidebar {
+        position: fixed; top: 56px; right: 12px; bottom: 12px; width: 420px;
+        background: rgba(0,0,0,0.6); border-radius: 10px; padding: 10px;
+        display:flex; flex-direction:column; gap:10px; overflow: auto; z-index: 10;
+      }
+      .panel { background:#0f1115; border:1px solid #2a2e35; border-radius:8px; padding:8px }
+      .panel .title { font-size:12px; opacity:.9; margin-bottom:6px }
+      .panel canvas { width: 100%; height: 140px; display:block; border-radius:6px; background:#0b0c10 }
+      #panel-outcomes canvas, #panel-heat canvas { height: 220px; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="sim"></canvas>
+    </div>
+
+    <div id="hud">
+      cameraX=<code>0</code> | cameraY=<code>0</code> | zoom=<code>1.00x</code><br/>
+      viewport=<code>0×0</code>
+    </div>
+
+    <div id="controls">
+      <label for="theme">Thème:</label>
+      <select id="theme">
+        <option value="primitives">Primitives</option>
+        <option value="triangles">Triangles</option>
+        <option value="sprites">Sprites (placeholders)</option>
+      </select>
+
+      <span style="width:8px"></span>
+
+      <label for="preset">Population:</label>
+      <select id="preset">
+        <option value="uniform10each">Uniforme (≈1010: 10× 0→100%)</option>
+        <option value="all70">100% à 70% (1000 agents)</option>
+        <option value="all30">100% à 30% (1000 agents)</option>
+      </select>
+      <button id="resetPop">Reset population</button>
+
+      <span style="width:8px"></span>
+
+      Mode: <button id="toggleMode">Auto</button>
+      <button id="nextDay" disabled>Prochain jour (N)</button>
+    </div>
+
+    <!-- === Panneau Stats (droite) === -->
+    <aside id="sidebar">
+      <div class="panel" id="panel-hist">
+        <div class="title">Répartition actuelle (1 % → 101 barres)</div>
+        <canvas id="chart-hist"></canvas>
+      </div>
+      <div class="panel" id="panel-pop">
+        <div class="title">Évolution de la population</div>
+        <canvas id="chart-pop"></canvas>
+      </div>
+      <div class="panel" id="panel-cows">
+        <div class="title">Vaches consommées / jour</div>
+        <canvas id="chart-cows"></canvas>
+      </div>
+      <div class="panel" id="panel-dist">
+        <div class="title">Distance moyenne parcourue / jour (px)</div>
+        <canvas id="chart-dist"></canvas>
+      </div>
+
+      <!-- Tu peux garder l’un OU l’autre : Outcomes (nouveau) OU Heatmap (ancien).
+           Le code gère les deux et utilise ce qui est présent dans le DOM. -->
+
+      <div class="panel" id="panel-outcomes">
+        <div class="title">Résultats par jour (morts / surv. / repro)</div>
+        <canvas id="chart-outcomes"></canvas>
+      </div>
+
+      <!--
+      <div class="panel" id="panel-heat">
+        <div class="title">Points moyens par % d’égoïsme – Heatmap (jours × 0..100%)</div>
+        <canvas id="chart-heat"></canvas>
+      </div>
+      -->
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
