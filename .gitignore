@@ -1,0 +1,34 @@
+# Node / TypeScript / Vite standard ignores
+node_modules/
+.vite/
+.dist/
+dist/
+build/
+.tmp/
+.temp/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Coverage / test output
+coverage/
+*.lcov
+
+# Misc
+.env*
