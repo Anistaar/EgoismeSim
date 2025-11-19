@@ -8,25 +8,27 @@ import { Agent } from "./entities/Agent";
 import { House } from "./entities/House";
 import { Cow } from "./entities/Cow";
 import { SpatialHash } from "./sim/SpatialHash";
+import { CoverageGrid } from "./sim/Coverage";
 import { clamp, randRange } from "./entities/types";
 import { getTheme, PrimitivesTheme } from "./visuals/Theme";
 import { SpritesTheme } from "./visuals/ThemeSprites";
 import { GreedySelfishBrain } from "./ai/AgentBrain";
 import { OutcomeBuckets, StatsPanel } from "./ui/StatsPanel";
+import CONFIG from "./config";
 
-const WORLD_WIDTH = 2000;
-const WORLD_HEIGHT = 1500;
-const DAY_DURATION_SEC = 30;
+const WORLD_WIDTH = CONFIG.world.width;
+const WORLD_HEIGHT = CONFIG.world.height;
+const DAY_DURATION_SEC = CONFIG.sim.dayDurationSec;
 
 // RÈGLES
-const COW_VALUE = 50;
-const TARGET_COWS = 20;
-const SURVIVE_POINTS = 55;
-const REPRO_EVERY = 50;
-const HOUSE_CAPACITY = 10000;
+const COW_VALUE = CONFIG.rules.cowValue;
+const TARGET_COWS = CONFIG.rules.targetCows;
+const SURVIVE_POINTS = CONFIG.rules.survivePoints;
+const REPRO_EVERY = CONFIG.rules.reproEvery;
+const HOUSE_CAPACITY = CONFIG.rules.houseCapacity;
 
 // NOUVEAU : vaches jamais trop près des maisons
-const COW_HOUSE_BUFFER = 64; // px (augmenter si besoin)
+const COW_HOUSE_BUFFER = CONFIG.cows.houseBuffer; // px (augmenter si besoin)
 
 enum SimMode { Auto = "Auto", Turn = "Tour" }
 enum Phase { Daytime = "Jour", Returning = "RetourMaison", Waiting = "Attente" }
@@ -54,24 +56,26 @@ class Simulation {
 
   private viewW = 0;
   private viewH = 0;
+  private showSense: boolean = !!CONFIG.debug?.showSenseOverlayDefault;
 
   private agents: Agent[] = [];
   private houses: House[] = [];
   private cows: Cow[] = [];
 
-  private cowHash = new SpatialHash<Cow>(96);
-  private agentHash = new SpatialHash<Agent>(96);
+  private cowHash = new SpatialHash<Cow>(CONFIG.sim.spatialHashCellCows);
+  private agentHash = new SpatialHash<Agent>(CONFIG.sim.spatialHashCellAgents);
+  private coverage = new CoverageGrid(WORLD_WIDTH, WORLD_HEIGHT, CONFIG.analysis?.coverageCellSize ?? 16, !!CONFIG.world.wrap);
 
   private dayTime = 0;
   private dayCount = 1;
   private phase: Phase = Phase.Daytime;
-  private mode: SimMode = SimMode.Auto;
-  private preset: PopulationPreset = "uniform10each";
+  private mode: SimMode = (CONFIG.sim.initialMode as SimMode);
+  private preset: PopulationPreset = CONFIG.sim.initialPreset;
 
   private dayCowKills = 0;
 
   private autoWaitTimer = 0;
-  private AUTO_WAIT_SEC = 1.0;
+  private AUTO_WAIT_SEC = CONFIG.sim.autoWaitSec;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -97,11 +101,11 @@ class Simulation {
     if (!ctx) throw new Error("Canvas 2D indisponible");
     this.ctx = ctx;
 
-    this.dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  this.dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, CONFIG.render.maxDevicePixelRatio));
     this.measureViewportFromCanvas();
 
     this.world = new World(WORLD_WIDTH, WORLD_HEIGHT);
-    this.camera = new Camera(this.viewW, this.viewH, WORLD_WIDTH, WORLD_HEIGHT, { minScale: 0.25, maxScale: 4 });
+  this.camera = new Camera(this.viewW, this.viewH, WORLD_WIDTH, WORLD_HEIGHT, { minScale: CONFIG.camera.minScale, maxScale: CONFIG.camera.maxScale, wrapWorld: !!CONFIG.world.wrap });
     this.input = new Input(this.canvas, this.camera);
     this.renderer = new Renderer(this.ctx, this.camera, this.world, this.dpr, PrimitivesTheme);
 
@@ -134,6 +138,7 @@ class Simulation {
       if (k === "m") this.toggleMode();
       if (k === "n") this.tryStartNextDay();
       if (k === "h") { this.camera.setPosition(0, 0); this.camera.setScale(1); }
+      if (k === "v") { this.showSense = !this.showSense; }
     });
 
     // Thème initial
@@ -174,24 +179,38 @@ class Simulation {
     this.houses.push(center);
 
     this.agents.length = 0;
+    // Override for exact agent count testing
+    if (CONFIG.sim.totalAgentsOverride && CONFIG.sim.totalAgentsOverride > 0) {
+      const N = CONFIG.sim.totalAgentsOverride;
+      const ego = Math.max(0, Math.min(100, CONFIG.sim.singleEgoPercent ?? 50));
+      for (let i = 0; i < N; i++) {
+        const jitter = () => (Math.random() - 0.5) * 80;
+        this.agents.push(new Agent(
+          center.pos.x + jitter(), center.pos.y + jitter(),
+          { home: center, brain: new GreedySelfishBrain(CONFIG.ai.greedy), egoPercent: ego, ...CONFIG.entities.agentDefaults }
+        ));
+      }
+      this.rebuildHousesForPopulation();
+      return;
+    }
     if (preset === "uniform10each") {
       for (let p = 0; p <= 100; p++) {
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < CONFIG.presets.uniformEach; i++) {
           const jitter = () => (Math.random() - 0.5) * 80;
           this.agents.push(new Agent(
             center.pos.x + jitter(), center.pos.y + jitter(),
-            { home: center, brain: new GreedySelfishBrain(), egoPercent: p }
+            { home: center, brain: new GreedySelfishBrain(CONFIG.ai.greedy), egoPercent: p, ...CONFIG.entities.agentDefaults }
           ));
         }
       }
     } else if (preset === "all70" || preset === "all30") {
       const p = preset === "all70" ? 70 : 30;
-      const total = 1000;
+      const total = CONFIG.presets.allCount;
       for (let i = 0; i < total; i++) {
         const jitter = () => (Math.random() - 0.5) * 80;
         this.agents.push(new Agent(
           center.pos.x + jitter(), center.pos.y + jitter(),
-          { home: center, brain: new GreedySelfishBrain(), egoPercent: p }
+          { home: center, brain: new GreedySelfishBrain(CONFIG.ai.greedy), egoPercent: p, ...CONFIG.entities.agentDefaults }
         ));
       }
     }
@@ -250,6 +269,7 @@ class Simulation {
     this.dayTime = 0;
     this.phase = Phase.Daytime;
     this.dayCowKills = 0;
+    this.coverage.clear();
     for (const a of this.agents) {
       a.returningHome = false;
       a.atHome = false;
@@ -370,8 +390,16 @@ class Simulation {
         a.brain.update({ agent: a, dt, world: { width: WORLD_WIDTH, height: WORLD_HEIGHT }, nearbyCows });
         a.update(dt);
         this.avoidHouses(a, dt); // ⬅️ évitement
-        a.pos.x = clamp(a.pos.x, 0, WORLD_WIDTH);
-        a.pos.y = clamp(a.pos.y, 0, WORLD_HEIGHT);
+        // Mark scanned area by this agent
+        this.coverage.markCircle(a.pos.x, a.pos.y, a.senseRadius);
+        if (CONFIG.world.wrap) {
+          // Toroidal wrapping
+          if (a.pos.x < 0) a.pos.x += WORLD_WIDTH; else if (a.pos.x >= WORLD_WIDTH) a.pos.x -= WORLD_WIDTH;
+          if (a.pos.y < 0) a.pos.y += WORLD_HEIGHT; else if (a.pos.y >= WORLD_HEIGHT) a.pos.y -= WORLD_HEIGHT;
+        } else {
+          a.pos.x = clamp(a.pos.x, 0, WORLD_WIDTH);
+          a.pos.y = clamp(a.pos.y, 0, WORLD_HEIGHT);
+        }
       }
 
       this.resolveCowKills();
@@ -386,10 +414,20 @@ class Simulation {
         const h = a.home;
         a.steerToward(h.pos, dt);
         a.update(dt);
-        a.pos.x = clamp(a.pos.x, 0, WORLD_WIDTH);
-        a.pos.y = clamp(a.pos.y, 0, WORLD_HEIGHT);
+        if (CONFIG.world.wrap) {
+          if (a.pos.x < 0) a.pos.x += WORLD_WIDTH; else if (a.pos.x >= WORLD_WIDTH) a.pos.x -= WORLD_WIDTH;
+          if (a.pos.y < 0) a.pos.y += WORLD_HEIGHT; else if (a.pos.y >= WORLD_HEIGHT) a.pos.y -= WORLD_HEIGHT;
+        } else {
+          a.pos.x = clamp(a.pos.x, 0, WORLD_WIDTH);
+          a.pos.y = clamp(a.pos.y, 0, WORLD_HEIGHT);
+        }
         const arriveDist = a.radius + h.radius + 2;
-        const dx = a.pos.x - h.pos.x, dy = a.pos.y - h.pos.y;
+        // distance with wrap-aware shortest path
+        let dx = a.pos.x - h.pos.x, dy = a.pos.y - h.pos.y;
+        if (CONFIG.world.wrap) {
+          if (Math.abs(dx) > WORLD_WIDTH / 2) dx -= Math.sign(dx) * WORLD_WIDTH;
+          if (Math.abs(dy) > WORLD_HEIGHT / 2) dy -= Math.sign(dy) * WORLD_HEIGHT;
+        }
         if (dx * dx + dy * dy <= arriveDist * arriveDist) {
           a.atHome = true; a.returningHome = false;
           const j = () => (Math.random() - 0.5) * 6;
@@ -416,12 +454,14 @@ class Simulation {
 
     const { w, h } = this.camera.getViewportSize();
     const timeLeft = this.phase === Phase.Daytime ? Math.max(0, DAY_DURATION_SEC - this.dayTime) : 0;
+    const covPct = this.coverage.getCoveragePercent();
     this.hud.innerHTML =
       `Jour <code>${this.dayCount}</code> | Phase <code>${this.phase}</code> | ` +
       (this.phase === Phase.Daytime ? `reste <code>${timeLeft.toFixed(1)}s</code> | ` : ``) +
       `Agents <code>${this.agents.length}</code> | ` +
       `Vaches <code>${this.cows.length}</code> | ` +
       `Maisons <code>${this.houses.length}</code><br/>` +
+      `Zone scannée <code>${covPct.toFixed(1)}%</code> | ` +
       `Mode <code>${this.mode}</code> | ` +
       `cameraX=<code>${Math.round(this.camera.x)}</code> | ` +
       `cameraY=<code>${Math.round(this.camera.y)}</code> | ` +
@@ -435,6 +475,45 @@ class Simulation {
     this.renderer.render(this.viewW, this.viewH, {
       agents: this.agents, houses: this.houses, cows: this.cows
     });
+    // Optional sensing overlay for analysis
+    if (this.showSense) {
+      this.camera.applyToContext(this.ctx, this.dpr);
+      this.ctx.save();
+      this.ctx.lineWidth = 1;
+      this.ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      for (const a of this.agents) {
+        const r = a.senseRadius;
+        // Base circle
+        this.ctx.beginPath();
+        this.ctx.arc(a.pos.x, a.pos.y, r, 0, Math.PI * 2);
+        this.ctx.stroke();
+        // Wrapped copies near edges (visualize torus coverage)
+        if (CONFIG.world.wrap) {
+          const nearLeft = a.pos.x < r;
+          const nearRight = a.pos.x > WORLD_WIDTH - r;
+          const nearTop = a.pos.y < r;
+          const nearBottom = a.pos.y > WORLD_HEIGHT - r;
+          const offsets: Array<[number, number]> = [];
+          if (nearLeft) offsets.push([WORLD_WIDTH, 0]);
+          if (nearRight) offsets.push([-WORLD_WIDTH, 0]);
+          if (nearTop) offsets.push([0, WORLD_HEIGHT]);
+          if (nearBottom) offsets.push([0, -WORLD_HEIGHT]);
+          // Corners if near both in x and y
+          if ((nearLeft || nearRight) && (nearTop || nearBottom)) {
+            const xs = nearLeft ? [WORLD_WIDTH] : nearRight ? [-WORLD_WIDTH] : [];
+            const ys = nearTop ? [WORLD_HEIGHT] : nearBottom ? [-WORLD_HEIGHT] : [];
+            for (const ox of xs) for (const oy of ys) offsets.push([ox, oy]);
+          }
+          for (const [ox, oy] of offsets) {
+            this.ctx.beginPath();
+            this.ctx.arc(a.pos.x + ox, a.pos.y + oy, r, 0, Math.PI * 2);
+            this.ctx.stroke();
+          }
+        }
+      }
+      this.ctx.restore();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
   };
 
   /** Abattage + métriques */
@@ -442,7 +521,11 @@ class Simulation {
     for (let i = this.cows.length - 1; i >= 0; i--) {
       const cow = this.cows[i];
       const nearbyAgents = this.agentHash.queryAround(cow.pos.x, cow.pos.y).filter(a => {
-        const dx = a.pos.x - cow.pos.x, dy = a.pos.y - cow.pos.y;
+        let dx = a.pos.x - cow.pos.x, dy = a.pos.y - cow.pos.y;
+        if (CONFIG.world.wrap) {
+          if (Math.abs(dx) > WORLD_WIDTH / 2) dx -= Math.sign(dx) * WORLD_WIDTH;
+          if (Math.abs(dy) > WORLD_HEIGHT / 2) dy -= Math.sign(dy) * WORLD_HEIGHT;
+        }
         return (dx * dx + dy * dy) <= (cow.radius + a.pickupRadius) * (cow.radius + a.pickupRadius);
       });
       if (nearbyAgents.length >= 2) {

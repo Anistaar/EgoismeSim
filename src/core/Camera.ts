@@ -10,13 +10,14 @@ export class Camera {
   private viewportH: number;
   private readonly worldW: number;
   private readonly worldH: number;
+  private readonly wrapWorld: boolean;
 
   constructor(
     viewportW: number,
     viewportH: number,
     worldW: number,
     worldH: number,
-    opts?: { minScale?: number; maxScale?: number }
+    opts?: { minScale?: number; maxScale?: number; wrapWorld?: boolean }
   ) {
     this.viewportW = viewportW;
     this.viewportH = viewportH;
@@ -24,6 +25,7 @@ export class Camera {
     this.worldH = worldH;
     this.minScale = opts?.minScale ?? 0.25;
     this.maxScale = opts?.maxScale ?? 4;
+    this.wrapWorld = !!opts?.wrapWorld;
     this.clamp();
   }
 
@@ -85,6 +87,11 @@ export class Camera {
   }
 
   private clamp() {
+    if (this.wrapWorld) {
+      // In wrap mode, camera is not constrained by world bounds; users can pan freely.
+      // We still keep scale within limits.
+      return;
+    }
     const visibleW = this.viewportW / this.scale;
     const visibleH = this.viewportH / this.scale;
 

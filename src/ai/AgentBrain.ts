@@ -16,21 +16,14 @@ export interface AgentBrain {
 /** IA "égoïste/greedy" : vise la vache la plus proche ; évite les bords. */
 export class GreedySelfishBrain implements AgentBrain {
   id = "greedy_selfish";
-  private wallMargin = 30;
-  private centerBias = 0.001;
+  private centerBias: number;
+
+  constructor(opts?: { wallMargin?: number; centerBias?: number }) {
+    this.centerBias = opts?.centerBias ?? 0.001;
+  }
 
   update(sense: BrainSense) {
     const { agent: a, dt, world, nearbyCows } = sense;
-
-    // Anti-collage bords
-    const m = this.wallMargin;
-    let nearWall = false;
-    let tx = a.pos.x, ty = a.pos.y;
-    if (a.pos.x < m) { tx = m; nearWall = true; }
-    else if (a.pos.x > world.width - m) { tx = world.width - m; nearWall = true; }
-    if (a.pos.y < m) { ty = m; nearWall = true; }
-    else if (a.pos.y > world.height - m) { ty = world.height - m; nearWall = true; }
-    if (nearWall) { a.steerToward({ x: tx, y: ty }, dt); return; }
 
     // Cible : vache la plus proche
     const senseR2 = a.senseRadius * a.senseRadius;

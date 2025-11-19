@@ -4,6 +4,7 @@ import type { Agent } from "../entities/Agent";
 import type { House } from "../entities/House";
 import type { Cow } from "../entities/Cow";
 import type { Theme } from "../visuals/Theme";
+import CONFIG from "../config";
 
 export class Renderer {
   constructor(
@@ -32,7 +33,7 @@ export class Renderer {
     if (data?.agents) {
       for (const a of data.agents) {
         this.theme.drawAgent(this.ctx, a);
-        this.theme.drawAgentLabel(this.ctx, a, `${Math.floor(a.points)}/55`);
+        this.theme.drawAgentLabel(this.ctx, a, `${Math.floor(a.points)}/${CONFIG.rules.survivePoints}`);
       }
     }
 

@@ -1,4 +1,5 @@
 import { colorForEgo } from "../visuals/Theme";
+import CONFIG from "../config";
 
 type Canvii = {
   hist: HTMLCanvasElement;
@@ -50,7 +51,7 @@ export class StatsPanel {
   }
 
   private resizeAll() {
-    this.dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  this.dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, CONFIG.render.maxDevicePixelRatio));
     for (const key of Object.keys(this.cvs) as (keyof Canvii)[]) {
       const c = this.cvs[key];
       const w = Math.max(1, Math.floor(c.clientWidth));
@@ -89,7 +90,7 @@ export class StatsPanel {
     this.distAvgHistory.push(metrics.avgDistance);
     this.outcomesHistory.push(metrics.outcomes);
 
-    const cap = 200;
+    const cap = CONFIG.ui.historyCap;
     if (this.popHistory.length > cap) {
       this.popHistory.shift();
       this.cowsHistory.shift();
